@@ -4,7 +4,7 @@ Start with the [README](../README.md) for installation and your first task.
 
 ## Slash commands
 
-The package includes 61 skill directories: 37 public skills and 24 `principle-*` references. Claude Code uses `/pstack:<name>`, and Pi uses `/skill:<name>`. In Codex, request a skill by name or install the [optional shortcuts](#codex) for the `/name` form below.
+The package includes 61 skill directories: 37 public skills and 24 `principle-*` references. Claude Code uses `/pstack:<name>`, Pi uses `/skill:<name>`, and Hermes uses `/<name>`. In Codex, request a skill by name or install the [optional shortcuts](#codex) for the `/name` form below.
 
 Find each skill's instructions in the [skills tree](../plugins/pstack/skills/).
 
@@ -58,6 +58,7 @@ All runtimes share [one skills tree](../plugins/pstack/skills/). A skills-only i
 | Codex | Install the native plugin through the repository's marketplace and trust its hook through `/hooks`. The [Codex mapping](../plugins/pstack/skills/poteto-mode/references/codex-tools.md) translates Claude tools and model names. Shared skill symlinks were also detected in a live session. |
 | Pi | Install the repository as a Pi package with `pi install`. The [Pi extension](../plugins/pstack/pi/index.ts) registers the subagent, question, and wake-up tools and `/loop`, and the [Pi mapping](../plugins/pstack/skills/poteto-mode/references/pi-tools.md) translates Claude tools and model names. The [equivalence table](pi-equivalence.md) records each Claude Code mechanism and how it was verified on Pi 1.1. |
 | GitHub Copilot | Install the plugin through the repository's marketplace; the CLI and the GitHub Copilot app share it. The [Copilot mapping](../plugins/pstack/skills/poteto-mode/references/copilot-tools.md) translates Claude tools, paths, and model roles, and maps app-only tools to CLI fallbacks. Install, routing, agent dispatch, and first-run setup are smoke-tested on the CLI; see [GitHub Copilot](#github-copilot). |
+| Hermes Agent | Skills only: add the clone's `plugins/pstack/skills` to `skills.external_dirs` in `config.yaml`, and optionally set `skills.auto_load: [poteto-mode]`. The [Hermes mapping](../plugins/pstack/skills/poteto-mode/references/hermes-tools.md) translates Claude tools, subagents, model roles, and paths. Not yet run in a live Hermes session. |
 | Prime Agent | Its documentation describes shared-directory discovery; it has not been tested in a live session. Choose tools and models through Prime's configuration. |
 | opencode | Discovery and reading a linked skill were verified on version 1.18.25. Configure agents, commands, and permissions in `opencode.json`. Its picker also lists principle skills. |
 | Gemini CLI | Its documentation describes shared-directory discovery; it has not been tested in a live session. Use `/skills list` to check discovery and `/skills reload` after changes. |
@@ -76,7 +77,7 @@ Smaller tasks proceed directly. The full skill loads when invoked, and explicit 
 
 To disable routing, run `setup-pstack` and turn off the session hook. In Claude Code, use `/pstack:setup-pstack`. You can also write `session hook: off` in the runtime's sheet, at the path in [setup-pstack's runtime table](../plugins/pstack/skills/setup-pstack/SKILL.md#other-runtimes). The hook reads that setting before injecting its instruction. Without the setting, routing stays on.
 
-Skills-only installs and other runtimes do not include the hook or the Pi extension. Request `poteto-mode` explicitly, or add a standing instruction to the runtime's instruction file.
+Skills-only installs and other runtimes do not include the hook or the Pi extension. Request `poteto-mode` explicitly, or add a standing instruction to the runtime's instruction file. On Hermes Agent, `skills.auto_load` loads `poteto-mode` at every session start.
 
 ### Shared skills installation
 
@@ -164,6 +165,33 @@ Copilot lists only part of a large plugin's skills in its prompt, so some pstack
 
 [`tests/copilot-smoke.sh`](../tests/copilot-smoke.sh) installs the checkout into a throwaway `COPILOT_HOME` and checks installation, routing, `session hook: off`, agent dispatch with an explicit model, first-run setup, that setup writes no sheet without the user's answers and exactly the supplied IDs with them, and that saved choices and plugin files reach a session without `--allow-all-paths` or any path-access request, from each session's `events.jsonl` and the written sheet. It runs the setup checks once per model in `SMOKE_SETUP_MODELS`. It also checks the `PreToolUse` deny, a vendored script and `check-sheet.sh` run with no permission request, that an injected sheet line stays out of the context, that an invalid sheet yields `sheet invalid`, that each hook fires once, the merge with a second plugin's session-start context, a `-p` resume, and, on a pseudo-terminal through [`tests/copilot-tui.py`](../tests/copilot-tui.py), a slash-command first message and an interactive resume. It needs a signed-in `copilot` CLI, spends about twenty premium requests, and skips when `copilot` is missing. CI does not run it.
 
+### Hermes Agent
+
+Hermes Agent has no pstack plugin, so it runs the skills alone, with no routing hook. Clone the repository, then add its skills directory to `skills.external_dirs` in `~/.hermes/config.yaml`, or in a profile's `~/.hermes/profiles/<name>/config.yaml`:
+
+```shell
+git clone https://github.com/michael-denyer/pstack-claude
+```
+
+```yaml
+skills:
+  external_dirs:
+    - /absolute/path/to/pstack-claude/plugins/pstack/skills
+  auto_load:
+    - poteto-mode
+```
+
+Use the clone's absolute path, and merge the keys into any existing `skills:` block. Hermes skips a configured directory that does not exist, so the entry is harmless on a machine without the clone. `auto_load` loads the listed skills at the start of every new session in that profile. It stands in for the routing hook on the other runtimes. Without it, invoke `/poteto-mode` each session.
+
+Keep these in mind:
+
+- A skill in `~/.hermes/skills/` with the same name as a pstack skill takes precedence over the clone's copy.
+- Hermes's `skill_manage` can edit a skill in an external directory, so run `git status` in the clone after a session that changed skills.
+- `delegate_task` runs its children on the `delegation` model and takes no per-call model. A role on another model runs as a separate process: `hermes chat --oneshot --query-file <brief.md> -m <model> --provider <provider> [--reasoning <level>] [-s poteto-mode] [--worktree]`. A `-m` override can fall back silently, so check the model in the run's usage report.
+- `setup-pstack` writes the model sheet to `$HERMES_HOME/pstack-models.md`, using the models in the profile's `config.yaml` (its `model:` block and providers, plus `delegation.model`). It never runs `hermes model`, which is interactive and changes the profile's default model. pstack ships no Hermes model IDs.
+
+The [Hermes mapping](../plugins/pstack/skills/poteto-mode/references/hermes-tools.md) translates Claude tools, subagents, model roles, and paths. It has not been run in a live Hermes session. The configuration keys follow Hermes's documentation for `skills.external_dirs` and `skills.auto_load`, and the generator and mapping tests check the rest of this repository's wiring.
+
 ## Configuration and dependencies
 
 Invoke [setup-pstack](../plugins/pstack/skills/setup-pstack/SKILL.md) to choose models for each role. It detects available models, confirms the choices, and writes an override sheet. Its [runtime table](../plugins/pstack/skills/setup-pstack/SKILL.md#other-runtimes) names the sheet path and loading mechanism for each runtime. Defaults live in [models.json](../plugins/pstack/models.json).
@@ -186,7 +214,7 @@ Install the Claude Code skill-authoring companion with:
 /plugin install plugin-dev@claude-plugins-official
 ```
 
-Those authoring workflows need `plugin-dev` for their guidance; other workflows do not. Codex and GitHub Copilot use the equivalents named in their mappings: [Codex](../plugins/pstack/skills/poteto-mode/references/codex-tools.md#driver-and-bundled-skills-pstack-references) and [Copilot](../plugins/pstack/skills/poteto-mode/references/copilot-tools.md#driver-and-bundled-skills-pstack-references).
+Those authoring workflows need `plugin-dev` for their guidance; other workflows do not. Codex, GitHub Copilot, and Hermes Agent use the equivalents named in their mappings: [Codex](../plugins/pstack/skills/poteto-mode/references/codex-tools.md#driver-and-bundled-skills-pstack-references), [Copilot](../plugins/pstack/skills/poteto-mode/references/copilot-tools.md#driver-and-bundled-skills-pstack-references), and [Hermes](../plugins/pstack/skills/poteto-mode/references/hermes-tools.md#driver-and-bundled-skills-pstack-references).
 
 Playbooks use the runtime's task-tracking tools or an uncommitted `todo.md` checklist. For Claude Code, the repository documents `CLAUDE_CODE_ENABLE_TODO_TOOLS=1`; see [platform adaptation](../plugins/pstack/skills/poteto-mode/SKILL.md#platform-adaptation).
 
@@ -216,7 +244,7 @@ Skills-only installs use `plugins/pstack/skills/`. Agent references and license 
 
 ### Generated files and checks
 
-The [generator](../tools/generate.mjs) updates versions, model defaults, Codex prompts, Copilot preambles and role lists, and portable reference files, and validates the Pi package manifest. The [slash-command table](#slash-commands) supplies the Codex prompt descriptions and order. Edit that table when changing a menu description, then regenerate. Keep a row for every public skill, with `poteto-mode` first.
+The [generator](../tools/generate.mjs) updates versions, model defaults, Codex prompts, the Codex, Copilot, and Hermes preambles, Copilot role lists, and portable reference files, and validates the Pi package manifest. The [slash-command table](#slash-commands) supplies the Codex prompt descriptions and order. Edit that table when changing a menu description, then regenerate. Keep a row for every public skill, with `poteto-mode` first.
 
 [Documentation fact tests](../tests/readme-facts.test.mjs) check the skill counts and upstream pin. The table parser requires the header `| command | use it when |`.
 
@@ -236,7 +264,7 @@ CI also checks shell scripts, workflows, Markdown, relative links, and the bundl
 
 The skill tree is synced against upstream `997ffc7` (v0.15.21). The thermos skills and agents are synced against `118e73b` (thermos 1.0.0).
 
-This repository ports Lauren Tan's pstack from Cursor to Claude Code and shares the skills with other runtimes. It includes six cursor-team-kit skills, the three thermos skills with their two review subagents, and an independently authored `babysit` skill. The port supplies Claude Code plugin registration and routing, Codex manifests and shortcuts, the Codex tool mapping, the Pi package, extension, and tool mapping, and the GitHub Copilot hooks and tool mapping.
+This repository ports Lauren Tan's pstack from Cursor to Claude Code and shares the skills with other runtimes. It includes six cursor-team-kit skills, the three thermos skills with their two review subagents, and an independently authored `babysit` skill. The port supplies Claude Code plugin registration and routing, Codex manifests and shortcuts, the Codex tool mapping, the Pi package, extension, and tool mapping, and the GitHub Copilot hooks and tool mapping, and the Hermes Agent tool mapping.
 
 Cursor-specific automations, sticky-mode metadata, the Grok Bot UI workflow, and the Cursor UI tutorial are excluded. [tools/upstream.json](../tools/upstream.json) records the revisions and exclusions, [tools/substitutions.json](../tools/substitutions.json) holds the Cursor-to-Claude rewrite rules, and [CHANGES.md](../CHANGES.md) records each release. The bundled `thermo-nuclear-code-quality-review` provides a maintainability review when a workflow calls for one, `thermo-nuclear-review` a correctness and security audit, and `thermos` runs both as parallel subagents.
 

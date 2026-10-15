@@ -16,7 +16,9 @@ import { code, codeList, PLUGIN, SKILLS } from "./plugin.mjs";
 // manifest parses, and `hooks` lists the hooks files the manifest names,
 // relative to the plugin root. GitHub Copilot stamps preambles but has no
 // prompts directory, since its CLI and app list plugin skills as slash commands
-// themselves, and no models.json block, since it ships no default models.
+// themselves, and no models.json block, since it ships no default models. A row
+// with no `manifest` gets no VERSION stamp and no packaging check, as Hermes
+// Agent has none: it reads the skills tree from its own config.
 export const RUNTIMES = [
   {
     name: "Codex",
@@ -52,6 +54,14 @@ export const RUNTIMES = [
       validateCopilotManifest(manifest, { claude: JSON.parse(read(`${PLUGIN}/.claude-plugin/plugin.json`)), pathExists }),
     hooks: (manifest) => [manifest.hooks],
     pluginRootVar: "COPILOT_PLUGIN_ROOT",
+  },
+  // Hermes Agent reads the skills tree through its own `skills.external_dirs`
+  // config, so it has no manifest: no VERSION stamp and no packaging check.
+  {
+    name: "Hermes Agent",
+    mapping: "hermes-tools.md",
+    modelNames: hermesModelNamesSection,
+    skillPreambles: true,
   },
 ].map((runtime) => ({
   ...runtime,
@@ -231,5 +241,34 @@ export function copilotModelNamesSection(models) {
     "Run `setup-pstack`, and the parent session that orchestrates a panel, on a model at least as strong as " +
     "gpt-5.4-mini or a Sonnet-class Claude model. On a Haiku-class model, setup picked models the user never " +
     "chose in about half of the smoke runs."
+  );
+}
+
+// Hermes ships no default model IDs: the models it reaches come from the
+// providers in its config, so the user picks them once in setup-pstack.
+export function hermesModelNamesSection(models) {
+  const strongest = models.roles.filter((r) => r.tier === "strongest");
+  return (
+    "Skills name Claude Code model aliases in their Models sections. Those aliases are not Hermes model IDs, " +
+    "and the Hermes build ships no default model IDs: the models Hermes reaches depend on the providers in its " +
+    "config, so the user picks them once.\n\n" +
+    "- The model sheet is `$HERMES_HOME/pstack-models.md`. `HERMES_HOME` defaults to `~/.hermes`, and a profile's " +
+    "home is `~/.hermes/profiles/<name>`. No hook injects the sheet. When a skill needs a role's model, read the " +
+    "sheet with `read_file` at its absolute path, which `terminal` prints, and pass that role's value to the " +
+    "`delegate_task` child or `hermes` process that runs the role, as Subagent policy says.\n" +
+    `- No sheet, or a role missing from it: before a skill that needs a role model (${roleSkills(models).map(code).join(", ")}), ` +
+    "run `setup-pstack` to write the sheet, then continue. Later runs read the sheet.\n" +
+    "- A role line in the sheet is the user's explicit model choice. `inherit-parent` or `auto` runs the role on the " +
+    "session's own model.\n" +
+    `- Roles that default to the strongest model (${strongest.map((r) => code(r.role)).join(", ")}): ` +
+    "the strongest model the user chose.\n" +
+    "- Diverse-model panels (`arena`, `architect`, `interrogate`, `how` critics, `reflect`): the adversarial signal " +
+    "comes from model diversity, so fill a panel with distinct models from different providers. A member on a model " +
+    "other than `delegation.model` runs as its own process: `hermes chat --oneshot --query-file <brief.md> -m <model> " +
+    "--provider <provider> [--reasoning <level>] [-s poteto-mode] [--worktree]`. If only one provider is reachable, " +
+    "note in the verdict that diversity was reduced.\n\n" +
+    "`setup-pstack` reads the `model:` block and the providers in the profile's `config.yaml`, plus `delegation.model`. " +
+    "For any other model it asks the user with `clarify`. It never runs `hermes model`, which is interactive and changes " +
+    "the profile's default model, and it never writes an ID that is not in config or that the user did not give."
   );
 }

@@ -34,6 +34,7 @@ body:
         - Codex
         - Pi
         - GitHub Copilot
+        - Hermes Agent
     validations:
       required: true
   - type: input

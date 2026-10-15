@@ -5,7 +5,7 @@
 // nothing and fails when a committed copy is stale, so it cannot ship.
 //
 // Sources of truth:
-//   VERSION  -> the "version" field in the Claude Code manifests and each RUNTIMES row's manifest
+//   VERSION  -> the "version" field in the Claude Code manifests and each RUNTIMES row's manifest, if it has one
 //   CHANGES.md must carry a heading for the current VERSION (release completeness)
 //   each skill's frontmatter (name + description) defines the shared Agent
 //   Skills boundary consumed natively by Codex, Prime, opencode, and Gemini CLI
@@ -20,13 +20,15 @@
 //     -> each model-consuming skill's "## Models" and "## Reasoning effort" sections
 //     -> setup-pstack's Models section and override-sheet block, and interrogate's reviewer table
 //     -> the "## Model names" section of each runtime's mapping file
-//        (poteto-mode/references/codex-tools.md, pi-tools.md, copilot-tools.md)
+//        (poteto-mode/references/codex-tools.md, pi-tools.md, copilot-tools.md, hermes-tools.md)
 //     -> one effort agent pair per level in plugins/pstack/effort-agents/
 //   the Per-skill notes table in poteto-mode/references/codex-tools.md
 //     -> the Codex preamble under the first heading of each listed skill's SKILL.md,
 //        and the codex-tools.md pointer in the prompt stub of every other public skill
 //   the Per-skill notes table in poteto-mode/references/copilot-tools.md
 //     -> the GitHub Copilot preamble under the same heading, after any Codex one
+//   the Per-skill notes table in poteto-mode/references/hermes-tools.md
+//     -> the Hermes Agent preamble under the same heading, after any Copilot one
 //   DRIVER_PLAYBOOKS -> the driver-skill line under each playbook's first heading
 //   plugins/pstack/models.json's roles, again
 //     -> the role list in setup-pstack's scripts/sheet.awk, which checks a Copilot sheet
@@ -73,7 +75,7 @@ const PROMPT_RUNTIMES = RUNTIMES.filter((runtime) => runtime.prompts);
 const VERSIONED_MANIFESTS = [
   ".claude-plugin/marketplace.json",
   `${PLUGIN}/.claude-plugin/plugin.json`,
-  ...RUNTIMES.map((runtime) => runtime.manifest),
+  ...RUNTIMES.filter((runtime) => runtime.manifest).map((runtime) => runtime.manifest),
 ];
 
 export const PORTABLE_ASSETS = [
@@ -1033,7 +1035,7 @@ export function problems(root, models) {
   const skillsDir = join(root, SKILLS);
   const read = (rel) => readFileSync(join(root, rel), "utf8");
   const pathExists = (rel) => existsSync(join(root, rel));
-  const packages = RUNTIMES.map((runtime) =>
+  const packages = RUNTIMES.filter((runtime) => runtime.manifest).map((runtime) =>
     attempt(() => {
       const text = read(runtime.manifest);
       let manifest;

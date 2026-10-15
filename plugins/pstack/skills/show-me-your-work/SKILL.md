@@ -7,6 +7,8 @@ description: "Keep a reviewable decision trail for long-running or unattended wo
 
 On GitHub Copilot, read the [platform mapping](../poteto-mode/references/copilot-tools.md), including its per-skill notes, before following this skill.
 
+On Hermes Agent, read the [platform mapping](../poteto-mode/references/hermes-tools.md), including its per-skill notes, before following this skill.
+
 Keep one canonical log.
 
 ## The format

@@ -6,7 +6,7 @@ Thanks for helping out. This repo is a **port**, not an original work: the `skil
 
 ## The sync boundary
 
-Upstream owns skill content. This port owns the Cursor-to-Claude-Code translation. It also carries named forks, each declared in [`tools/forks.json`](tools/forks.json) as a `port-feature` (Claude Code, Codex, Pi, or GitHub Copilot mechanics upstream cannot carry) or a `policy` (a workflow change the port chose to keep).
+Upstream owns skill content. This port owns the Cursor-to-Claude-Code translation. It also carries named forks, each declared in [`tools/forks.json`](tools/forks.json) as a `port-feature` (Claude Code, Codex, Pi, GitHub Copilot, or Hermes Agent mechanics upstream cannot carry) or a `policy` (a workflow change the port chose to keep).
 
 Both kinds of `SKILL.md` change land here. Upstream rarely merges pull requests from outside its own team, so this port does not ask you to land a change there first. Before changing a `SKILL.md`, work out which kind yours is:
 
@@ -43,7 +43,7 @@ bun test tests/
 
 The root `package.json` declares `typebox` and the optional `@earendil-works/pi-coding-agent` as peer dependencies, because Pi provides both to an extension at runtime. The root `bun.lock` pins `typebox` for the generator, which checks hook files against it, and for the tests under `tests/pi/`, which load the extension outside Pi.
 
-The generator writes `VERSION` into all four plugin manifests and the Pi `package.json` and stamps model defaults from `plugins/pstack/models.json`. It also owns the lines under the first heading of some files: the Codex preamble on each skill with a row in the Per-skill notes table of `skills/poteto-mode/references/codex-tools.md`, and the driver-skill line on the playbooks in `DRIVER_PLAYBOOKS`. Either line anywhere else fails the generator, so a skill gets the preamble by gaining a notes row. The GitHub Copilot preamble comes the same way from the Per-skill notes table of `copilot-tools.md` and follows any Codex preamble. No skill file carries a Pi line: `poteto-mode/SKILL.md` points at `pi-tools.md` once, and a skill's Pi note is a row in that file. For Copilot it also stamps the role list in `skills/setup-pstack/scripts/sheet.awk`, the roles-by-tier table in `setup-pstack/copilot.md`, and the role-model skill list in `hooks/session-start-copilot.md` from `models.json`. It validates each skill's `name` and `description`, then generates a Codex prompt for each public skill using the [slash-command table](docs/reference.md#slash-commands).
+The generator writes `VERSION` into all four plugin manifests and the Pi `package.json` and stamps model defaults from `plugins/pstack/models.json`. It also owns the lines under the first heading of some files: the Codex preamble on each skill with a row in the Per-skill notes table of `skills/poteto-mode/references/codex-tools.md`, and the driver-skill line on the playbooks in `DRIVER_PLAYBOOKS`. Either line anywhere else fails the generator, so a skill gets the preamble by gaining a notes row. The GitHub Copilot preamble comes the same way from the Per-skill notes table of `copilot-tools.md` and follows any Codex preamble. The Hermes Agent preamble comes the same way from `hermes-tools.md` and follows the Copilot one. No skill file carries a Pi line: `poteto-mode/SKILL.md` points at `pi-tools.md` once, and a skill's Pi note is a row in that file. For Copilot it also stamps the role list in `skills/setup-pstack/scripts/sheet.awk`, the roles-by-tier table in `setup-pstack/copilot.md`, and the role-model skill list in `hooks/session-start-copilot.md` from `models.json`. It validates each skill's `name` and `description`, then generates a Codex prompt for each public skill using the [slash-command table](docs/reference.md#slash-commands).
 
 It also copies the four files in `PORTABLE_ASSETS` into the skills-only installation and removes stale generated files. `NOTICE-skills.md` supplies the notice included with those skills.
 
@@ -124,6 +124,6 @@ So: any PR that changes skill behavior either bumps the version itself or is fol
 
 ## Reporting bugs
 
-Include the pstack version, the Claude Code (or Codex, Pi, or GitHub Copilot) version, and the reproduction steps. [#22](https://github.com/michael-denyer/pstack-claude/issues/22) is the model to copy: it named versions, gave numbered steps, and included the experiment that isolated the cause.
+Include the pstack version, the Claude Code (or Codex, Pi, GitHub Copilot, or Hermes Agent) version, and the reproduction steps. [#22](https://github.com/michael-denyer/pstack-claude/issues/22) is the model to copy: it named versions, gave numbered steps, and included the experiment that isolated the cause.
 
 Reproduce the bug on the latest release before you file it, because only that release receives fixes. The [bug report form](.github/ISSUE_TEMPLATE/bug_report.yml) asks for each of these fields. An issue filed through `gh` or the API skips the form, so give the same fields in the same order.
