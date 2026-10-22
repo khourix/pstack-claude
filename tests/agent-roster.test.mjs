@@ -1,7 +1,7 @@
 // Each runtime names the plugin's subagent types by hand: the Pi agent tool's
-// parameter description and the Subagent policy of the Pi, Copilot, Codex, and
-// Hermes mappings. The generator stamps only the Claude manifest's agents array
-// from plugins/pstack/agents/, so these five copies are the ones that can drift.
+// parameter description and the Subagent policy of the Pi, Copilot, and Codex
+// mappings. Claude Code registers plugins/pstack/agents/ by default, so these
+// four copies are the ones that can drift.
 import { describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { basename, join } from "node:path";
@@ -12,10 +12,10 @@ const agents = readdirSync(join(pluginRoot, "agents"))
   .filter((file) => file.endsWith(".md"))
   .map((file) => basename(file, ".md"));
 
-// Claude Code, Pi, and Copilot dispatch by the namespaced name. The Codex and
-// Hermes mappings list the bare names, since neither has a namespaced type.
-// The Pi tool's description runs the names together in prose, so a name must
-// not continue into a longer one such as pstack:poteto-agent-<level>.
+// Claude Code, Pi, and Copilot dispatch by the namespaced name. The Codex
+// mapping lists the bare names that have no spawn_agent type. The Pi tool's
+// description runs the names together in prose, so a name must not continue
+// into a longer one.
 const rosters = [
   ["pi/agent-tools.ts", (name) => new RegExp(`pstack:${name}(?![\\w-])`)],
   ["skills/poteto-mode/references/pi-tools.md", (name) => new RegExp(`\`pstack:${name}\``)],

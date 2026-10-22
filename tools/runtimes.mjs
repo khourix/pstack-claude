@@ -19,13 +19,17 @@ import { code, codeList, PLUGIN, SKILLS } from "./plugin.mjs";
 // themselves, and no models.json block, since it ships no default models. A row
 // with no `manifest` gets no VERSION stamp and no packaging check, as Hermes
 // Agent has none: it reads the skills tree from its own config.
+// Muse declares its hooks inline in its native manifest, so it has no hooks
+// file either, and no prompts directory, since Muse lists each user-invocable
+// skill as a slash command itself and rejects a command whose id duplicates a
+// skill id. Its `stampManifest` rewrites the manifest's skill list from the tree.
 export const RUNTIMES = [
   {
     name: "Codex",
     key: "codex",
     mapping: "codex-tools.md",
     modelNames: codexModelNamesSection,
-    checkModels: checkCodexModels,
+    checkModels: tierExamples("codex"),
     skillPreambles: true,
     prompts: `${PLUGIN}/.codex-plugin/prompts`,
     manifest: `${PLUGIN}/.codex-plugin/plugin.json`,
@@ -55,6 +59,18 @@ export const RUNTIMES = [
     hooks: (manifest) => [manifest.hooks],
     pluginRootVar: "COPILOT_PLUGIN_ROOT",
   },
+  {
+    name: "Muse",
+    key: "muse",
+    mapping: "muse-tools.md",
+    modelNames: museModelNamesSection,
+    checkModels: tierExamples("muse"),
+    skillPreambles: true,
+    manifest: `${PLUGIN}/.muse-plugin/plugin.json`,
+    validate: ({ manifest, read, pathExists }) =>
+      validateMuseManifest(manifest, { claude: JSON.parse(read(`${PLUGIN}/.claude-plugin/plugin.json`)), pathExists }),
+    stampManifest: stampMuseManifest,
+  },
   // Hermes Agent reads the skills tree through its own `skills.external_dirs`
   // config, so it has no manifest: no VERSION stamp and no packaging check.
   {
@@ -73,14 +89,74 @@ export const RUNTIMES = [
     : null,
 }));
 
-// Codex has no Claude aliases, so its block gives an example model per tier.
-function checkCodexModels(codex, { raw, fail, unique }) {
-  for (const tier of Object.keys(raw.tiers)) {
-    if (!Object.hasOwn(codex, tier)) fail(`codex has no example for tier "${tier}"`);
+// Codex and Muse have no Claude aliases, so each block gives a model per tier.
+// A declaration, so the RUNTIMES rows above can call it at module load.
+function tierExamples(label) {
+  return (block, { raw, fail, unique }) => {
+    for (const tier of Object.keys(raw.tiers)) {
+      if (!Object.hasOwn(block, tier)) fail(`${label} has no example for tier "${tier}"`);
+    }
+    for (const [tier, value] of Object.entries(block)) {
+      if (!Object.hasOwn(raw.tiers, tier)) fail(`${label} names "${tier}", which is not a tier`);
+      unique([value].flat(), `${label} "${tier}"`);
+    }
+  };
+}
+
+// The Muse manifest's skill list, rewritten from the tree the generator
+// planned: one skill capability per skill directory, each pointing at its
+// SKILL.md in the package. Commands stay empty: Muse surfaces each
+// user-invocable skill as a slash command itself and rejects a command whose
+// id duplicates a skill id.
+export function stampMuseManifest(text, { skills }) {
+  const manifest = JSON.parse(text);
+  manifest.capabilities = {
+    ...manifest.capabilities,
+    skills: skills.map((name) => ({ id: name, path: `skills/${name}/SKILL.md`, enabledDefault: true })),
+  };
+  return JSON.stringify(manifest, null, 2) + "\n";
+}
+
+const MUSE_HOOK = ["sh", "hooks/session-start.sh", "muse"];
+
+// The Muse build is a native Muse plugin bundle: its manifest keeps the
+// Claude Code plugin's name, and every capability path it lists exists in the
+// package. The SessionStart hook runs the shared hook script with `muse`.
+export function validateMuseManifest(manifest, { claude, pathExists }) {
+  const at = `${PLUGIN}/.muse-plugin/plugin.json`;
+  if (manifest.name !== claude.name) throw new Error(`${at}: name "${manifest.name}" != Claude Code manifest name "${claude.name}"`);
+  if (manifest.schemaVersion !== 1) throw new Error(`${at}: schemaVersion "${manifest.schemaVersion}" is not 1`);
+  if (manifest.compat?.source !== "native" || manifest.compat?.manifestDir !== ".muse-plugin") {
+    throw new Error(`${at}: compat must be the native .muse-plugin manifest`);
   }
-  for (const [tier, value] of Object.entries(codex)) {
-    if (!Object.hasOwn(raw.tiers, tier)) fail(`codex names "${tier}", which is not a tier`);
-    unique([value].flat(), `codex "${tier}"`);
+  const skillIds = new Set();
+  const lists = [["skills", manifest.capabilities?.skills, true], ["commands", manifest.capabilities?.commands ?? [], false]];
+  for (const [kind, entries, required] of lists) {
+    if (!Array.isArray(entries) || (required && !entries.length)) throw new Error(`${at}: capabilities.${kind} is empty`);
+    const ids = new Set();
+    for (const entry of entries) {
+      if (ids.has(entry.id)) throw new Error(`${at}: capabilities.${kind} repeats "${entry.id}"`);
+      ids.add(entry.id);
+      if (kind === "skills") skillIds.add(entry.id);
+      if (kind === "commands" && skillIds.has(entry.id)) {
+        throw new Error(`${at}: command "${entry.id}" duplicates a skill id; Muse rejects it`);
+      }
+      if (typeof entry.path !== "string" || !pathExists(`${PLUGIN}/${entry.path}`)) {
+        throw new Error(`${at}: ${kind} "${entry.id}" path "${entry.path}" is not a file in the plugin`);
+      }
+    }
+  }
+  if (!manifest.capabilities.skills.some((entry) => entry.id === "poteto-mode")) {
+    throw new Error(`${at}: capabilities.skills has no "poteto-mode"`);
+  }
+  const hooks = manifest.capabilities?.hooks ?? [];
+  const sessionStart = hooks.filter((hook) => hook.event === "SessionStart");
+  if (sessionStart.length !== 1) throw new Error(`${at}: expected one SessionStart hook, found ${sessionStart.length}`);
+  // The manifest's hook command is hand-written, not stamped, so it must be
+  // exactly the shared script inside the plugin, run with `muse`.
+  const command = JSON.stringify(sessionStart[0].command);
+  if (command !== JSON.stringify(MUSE_HOOK) || !pathExists(`${PLUGIN}/${MUSE_HOOK[1]}`)) {
+    throw new Error(`${at}: SessionStart hook command is ${command}, not ${JSON.stringify(MUSE_HOOK)}`);
   }
 }
 
@@ -115,22 +191,55 @@ const tierRoles = (models, tier) =>
     .map((r) => code(r.role))
     .join(", ");
 
-export function codexModelNamesSection(models) {
+// The Model names section of a runtime whose models.json block gives a model
+// per tier. `panel` follows "A good default panel", `dispatch` is an optional
+// paragraph before the closing line, and `ids` names what the sheet lists.
+function tierModelNamesSection(models, { label, block, worker, panel, dispatch, ids }) {
   return (
     "Skills name Claude defaults (a single-role default for code/prose/judgment, a worker model for " +
     "feature and refactoring code, plus a diverse-model panel for diverse-model panels; each model-consuming skill lists its own in a " +
-    "Models section). These slugs do not resolve on Codex. Substitute your configured Codex models:\n\n" +
-    `- Single-model roles: your primary Codex model (for example ${code(models.codex.default)}).\n` +
+    `Models section). These slugs do not resolve on ${label}. Substitute your configured ${label} models:\n\n` +
+    `- Single-model roles: your primary ${label} model (for example ${code(block.default)}).\n` +
     `- Roles that default to the Claude worker model (${tierRoles(models, "worker")}): ` +
-    `your fast Codex code model (for example ${code(models.codex.worker)}).\n` +
+    `your ${worker} (for example ${code(block.worker)}).\n` +
     `- Roles that default to the strongest Claude model (${tierRoles(models, "strongest")}): ` +
-    `your strongest Codex model (for example ${code(models.codex.strongest)}).\n` +
+    `your strongest ${label} model (for example ${code(block.strongest)}).\n` +
     "- Diverse-model panels (`arena`, `architect`, `interrogate`, `how` critics, `reflect`): the adversarial " +
-    "signal comes from model diversity, so use the distinct Codex models available to you. A good default panel " +
-    `on ChatGPT is ${codeList(models.codex.panel)}. If only one model family is reachable, vary reasoning ` +
-    "effort and note in the verdict that diversity was reduced.\n\n" +
-    "`/setup-pstack` writes the configured model list. On Codex, set it to your Codex model slugs."
+    `signal comes from model diversity, so use the distinct ${label} models available to you. A good default panel ` +
+    panel(codeList(block.panel)) +
+    "\n\n" +
+    (dispatch ? `${dispatch}\n\n` : "") +
+    `\`/setup-pstack\` writes the configured model list. On ${label}, set it to your ${ids}.`
   );
+}
+
+export function codexModelNamesSection(models) {
+  return tierModelNamesSection(models, {
+    label: "Codex",
+    block: models.codex,
+    worker: "fast Codex code model",
+    panel: (list) =>
+      `on ChatGPT is ${list}. If only one model family is reachable, vary reasoning ` +
+      "effort and note in the verdict that diversity was reduced.",
+    ids: "Codex model slugs",
+  });
+}
+
+export function museModelNamesSection(models) {
+  return tierModelNamesSection(models, {
+    label: "Muse",
+    block: models.muse,
+    worker: "fast Muse model",
+    panel: (list) =>
+      `is ${list}. Muse serves one model family, so vary reasoning effort across the panel ` +
+      "too and note in the verdict that diversity was reduced.",
+    dispatch:
+      "Pass a role's model where the dispatch takes one: a Workflow child's `model`, or the session model when " +
+      "the dispatch has no model field. `subagent_spawn` takes an agent definition, not a model, so a role " +
+      "dispatched that way runs on the session's model and effort; a Workflow child takes both (see Subagent policy). " +
+      "`inherit-parent` or `auto` omits `model`.",
+    ids: "Muse model IDs, as `muse model-profile` and the model catalog name them",
+  });
 }
 
 export function piModelNamesSection(models) {
@@ -249,6 +358,35 @@ export function copilotModelNamesSection(models) {
     "Run `setup-pstack`, and the parent session that orchestrates a panel, on a model at least as strong as " +
     "gpt-5.4-mini or a Sonnet-class Claude model. On a Haiku-class model, setup picked models the user never " +
     "chose in about half of the smoke runs."
+  );
+}
+
+// Hermes ships no default model IDs: the models it reaches come from the
+// providers in its config, so the user picks them once in setup-pstack.
+export function hermesModelNamesSection(models) {
+  const strongest = models.roles.filter((r) => r.tier === "strongest");
+  return (
+    "Skills name Claude Code model aliases in their Models sections. Those aliases are not Hermes model IDs, " +
+    "and the Hermes build ships no default model IDs: the models Hermes reaches depend on the providers in its " +
+    "config, so the user picks them once.\n\n" +
+    "- The model sheet is `$HERMES_HOME/pstack-models.md`. `HERMES_HOME` defaults to `~/.hermes`, and a profile's " +
+    "home is `~/.hermes/profiles/<name>`. No hook injects the sheet. When a skill needs a role's model, read the " +
+    "sheet with `read_file` at its absolute path, which `terminal` prints, and pass that role's value to the " +
+    "`delegate_task` child or `hermes` process that runs the role, as Subagent policy says.\n" +
+    `- No sheet, or a role missing from it: before a skill that needs a role model (${roleSkills(models).map(code).join(", ")}), ` +
+    "run `setup-pstack` to write the sheet, then continue. Later runs read the sheet.\n" +
+    "- A role line in the sheet is the user's explicit model choice. `inherit-parent` or `auto` runs the role on the " +
+    "session's own model.\n" +
+    `- Roles that default to the strongest model (${strongest.map((r) => code(r.role)).join(", ")}): ` +
+    "the strongest model the user chose.\n" +
+    "- Diverse-model panels (`arena`, `architect`, `interrogate`, `how` critics, `reflect`): the adversarial signal " +
+    "comes from model diversity, so fill a panel with distinct models from different providers. A member on a model " +
+    "other than `delegation.model` runs as its own process: `hermes chat --oneshot --query-file <brief.md> -m <model> " +
+    "--provider <provider> [--reasoning <level>] [-s poteto-mode] [--worktree]`. If only one provider is reachable, " +
+    "note in the verdict that diversity was reduced.\n\n" +
+    "`setup-pstack` reads the `model:` block and the providers in the profile's `config.yaml`, plus `delegation.model`. " +
+    "For any other model it asks the user with `clarify`. It never runs `hermes model`, which is interactive and changes " +
+    "the profile's default model, and it never writes an ID that is not in config or that the user did not give."
   );
 }
 
