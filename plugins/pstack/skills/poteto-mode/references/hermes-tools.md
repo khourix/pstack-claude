@@ -1,6 +1,6 @@
 # Hermes Agent tool mapping for pstack
 
-pstack skills are written in Claude Code tool language (the `Skill` tool, the `Agent` tool, `AskUserQuestion`, Claude model names, `~/.claude/` paths). On Hermes Agent the skills are the same files; only the tool names, model choices, and paths resolve differently. Read this when a pstack skill names a Claude tool, a driver or bundled skill, a Claude model, or a Claude Code path. This file is Hermes-specific; Codex, Pi, GitHub Copilot, and other runtimes use their own mappings.
+pstack skills are written in Claude Code tool language (the `Skill` tool, the `Agent` tool, `AskUserQuestion`, Claude model names, `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/` paths). On Hermes Agent the skills are the same files; only the tool names, model choices, and paths resolve differently. Read this when a pstack skill names a Claude tool, a driver or bundled skill, a Claude model, or a Claude Code path. This file is Hermes-specific; Codex, Pi, GitHub Copilot, and other runtimes use their own mappings.
 
 ## Tool actions
 
@@ -21,7 +21,7 @@ pstack skills are written in Claude Code tool language (the `Skill` tool, the `A
 | `run_in_background: true` | `delegate_task`. In a one-shot CLI run or cron it joins the children and returns their results in the same call; in the desktop app, gateway, or interactive chat it runs them in the background, and their results arrive as a new message after the agent ends its turn. |
 | Track tasks (the todolist; `TaskCreate` / `TaskUpdate`, or `TodoWrite` on Claude Code) | `todo_list` |
 | Ask the human a fixed-choice question (`AskUserQuestion`) | `clarify`, with up to four choices, or `multi_select` for several |
-| Search Claude Code transcripts under `~/.claude/projects/` | `session_search`. See Transcripts below. |
+| Search Claude Code transcripts under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/` | `session_search`. See Transcripts below. |
 | Recurring or self-paced re-invocation (`/loop`, `ScheduleWakeup`) | `cronjob_manage` |
 
 `todo_list`, `cronjob_manage`, `session_search`, and `process_manage` are deferred tools. Find each with `tool_search`, then run it with `tool_call`.
@@ -89,12 +89,14 @@ Affected skill entry points point here. Most skills need only the tables above. 
 | `no-comments` | There is no `pstack:comment-sicko` subagent type. Dispatch a `delegate_task` whose context tells it to read `poteto-mode/references/agents/comment-sicko.md` in full first. |
 | `thermos` | There are no thermo-nuclear subagent types. Dispatch two `delegate_task` children in one call. Each reads its named skill (`thermo-nuclear-review` or `thermo-nuclear-code-quality-review`) in full first, and each gets the same diff and file contents. |
 | `teach` | Running `how` and `why` in parallel maps to `delegate_task` fan-out. Image generation uses whatever image tool the profile exposes, or skip it and say so. |
-| `create-verification-skill` | Write the generated skill to `.agents/skills/verify/` in the repository, not `.claude/skills/verify/`, then run `hermes skills trust` inside the repository so Hermes loads it. The app-driving harness is platform-neutral. |
-| `maintain-verification-skill` | The parallel per-feature source readers map to `delegate_task` fan-out. The project-local skill lives under `.agents/skills/`, not `.claude/skills/`. |
+| `create-verification-skill` | Write the generated skill to `.agents/skills/verify/` in the repository, not `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/verify/`, then run `hermes skills trust` inside the repository so Hermes loads it. The app-driving harness is platform-neutral. |
+| `maintain-verification-skill` | The parallel per-feature source readers map to `delegate_task` fan-out. The project-local skill lives under `.agents/skills/`, not `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/skills/`. |
+| `create-formal-verification-skill` | Write the generated skill to `.agents/skills/<area>/`, named for the area it verifies. The verifier and its run command are platform-neutral. |
+| `maintain-formal-verification-skill` | Project skills, the formal verification skill among them, live under `.agents/skills/`. |
 | `babysit` | `loop` resolves to `cronjob_manage` and `AskUserQuestion` to `clarify`, through the tables above. |
 | `automate-me` | Transcripts come from `session_search`; see Transcripts. `plugin-dev:skill-development` resolves through the Driver table. |
-| `reflect` | The three reviewers and the synthesizer map to `delegate_task`; a role on a model other than `delegation.model` runs as a `hermes` process, as Subagent policy describes. The transcript finder reads Claude Code's layout under `~/.claude/projects/` and cannot read Hermes sessions, so pass the session digest step 1 allows, or find the transcript with `session_search`. |
-| `recall` | Search Hermes sessions with `session_search`, not `~/.claude/projects/`. Check live state with `git` and `gh`. |
+| `reflect` | The three reviewers and the synthesizer map to `delegate_task`; a role on a model other than `delegation.model` runs as a `hermes` process, as Subagent policy describes. The transcript finder reads Claude Code's layout under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/` and cannot read Hermes sessions, so pass the session digest step 1 allows, or find the transcript with `session_search`. |
+| `recall` | Search Hermes sessions with `session_search`, not `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/`. Check live state with `git` and `gh`. |
 | `show-me-your-work` | The end-of-run check reads this session's transcript (see Transcripts). |
 | `swarm` | Each worker is a `delegate_task` child on `delegation.model`. A sheet line that names another model for the workers runs each such worker as `hermes chat --oneshot --query-file <brief.md> -m <model> --provider <provider> [--reasoning <level>] [-s poteto-mode] [--worktree]`. Each writing worker gets its own worktree: `--worktree` for a process, `delegation.worktree_isolation` for a child. |
 | `why` | The parallel investigators and the synthesizer map to `delegate_task`; a role on a model other than `delegation.model` runs as a `hermes` process, as Subagent policy describes. Claude Code prefixes MCP tools with `mcp__`; on Hermes, find MCP tools in the session's tool list, not in `.mcp.json` or `claude mcp list`. |
@@ -109,6 +111,6 @@ Where a pstack skill says "your instructions file" or `CLAUDE.md`, on Hermes tha
 
 ## Transcripts
 
-Claude Code keeps one directory per project under `~/.claude/projects/<encoded-cwd>/`. Hermes keeps its sessions in `$HERMES_HOME/sessions/*.jsonl`, with an index in `$HERMES_HOME/state.db`. Search them with `session_search` first, and read the raw files only when a search does not reach what you need. Never read another project's sessions unasked.
+Claude Code keeps one directory per project under `${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects/<encoded-cwd>/`. Hermes keeps its sessions in `$HERMES_HOME/sessions/*.jsonl`, with an index in `$HERMES_HOME/state.db`. Search them with `session_search` first, and read the raw files only when a search does not reach what you need. Never read another project's sessions unasked.
 
 In poteto-mode's playbooks, `eval` reads candidate transcripts through `session_search`, and `session-pickup` and `worktree-cleanup` search them scoped to the workspace. `orchestrate` and `multi-phase-plan` keep their store under `$HERMES_HOME/orchestrate/` instead of `~/.claude/orchestrate/`.
